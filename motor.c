@@ -29,9 +29,11 @@
 // 1/64
 // #define CLOCK_SELECT ((1 << CS11) | (1 << CS10))
 
-#define FULL_ROT_COUNT (120UL*12UL*10UL)
 #define TIMER_INTERVAL(MS) ((F_CPU * (unsigned long)(MS)) / (256UL * 1000UL))
-#define MAX_INTERVAL TIMER_INTERVAL(100UL)
+#define MAX_INTERVAL TIMER_INTERVAL(200UL)
+#define MIN_INTERVAL TIMER_INTERVAL(10UL)
+#define SPEED(DC, DT) (uint16_t)((uint32_t)(DC) * 4096UL / (DT))
+#define DISTANCE(SPD, DT) (int16_t)(((uint32_t)(SPD) * (uint32_t)(DT)) / 4096UL)
 
 #define LOCKI() uint8_t sreg = SREG; cli()
 #define RELOCKI() sreg = SREG; cli()
@@ -39,34 +41,31 @@
 
 static struct
 {
-    int16_t count;
     int16_t target;
     uint16_t skip;
     uint8_t sens;
     uint8_t last_dir;
-    uint16_t time;
-
-    uint16_t cur_interval;
-    uint16_t target_interval;
+    uint16_t target_spd;
     uint16_t timer_ovf;
+    uint16_t max_spd;
+    uint8_t min_feed;
+    int16_t count[3];
+    uint16_t time[3];
+    uint8_t feed;
+    bool update;
 } s_motor_a;
 
-static struct {
-    uint16_t ocr;
-    uint16_t dt;
-    uint16_t interval;
-    uint16_t time;
-    uint8_t dir;
-    bool change;
-} dbgm, dbgm_tmp;
 
 static struct {
     uint16_t ocr0, ocr1;
     uint16_t feed;
+    uint16_t spd;
+    uint16_t tspd;
+    int16_t dc;
+    int16_t est;
+    int16_t count;
     uint16_t dt;
     uint16_t dt2;
-    uint16_t interval;
-    uint16_t time;
     bool change;
 } dbgt, dbgt_tmp;
 
@@ -76,24 +75,13 @@ void debug_dump_timer(void) {
         memcpy(&dbgt_tmp, &dbgt, sizeof(dbgt));
         dbgt.change = false;
         UNLOCKI();
-        printf("t: %u %u %u %u %u %u %u %u\n",
-               dbgt_tmp.ocr0, dbgt_tmp.ocr1, dbgt_tmp.feed, dbgt_tmp.dt,
-               dbgt_tmp.dt2, dbgt_tmp.interval, s_motor_a.target_interval,
-               dbgt_tmp.time);
+        printf("t: %u %u %i %i %i %u %u %u %u %u \n", dbgt_tmp.spd,
+               dbgt_tmp.tspd, dbgt_tmp.est, dbgt_tmp.count, dbgt_tmp.dc,
+               dbgt_tmp.dt, dbgt_tmp.dt2, dbgt_tmp.ocr0, dbgt_tmp.ocr1,
+               dbgt_tmp.feed);
     }
 }
 
-void debug_dump_motor(void) {
-    if (dbgm.change) {
-        LOCKI();
-        memcpy(&dbgm_tmp, &dbgm, sizeof(dbgm));
-        dbgm.change = false;
-        UNLOCKI();
-        printf("m: %u %u %u %d %u\n",
-               dbgm_tmp.ocr, dbgm_tmp.dt, dbgm_tmp.interval,
-               dbgm_tmp.dir, dbgm_tmp.time);
-    }
-}
 
 static uint16_t get_time(void) {
     uint16_t ovf = s_motor_a.timer_ovf;
@@ -107,12 +95,6 @@ static uint16_t get_time(void) {
 
 ISR (MA_SENS_PCINT_VECT) {
     uint16_t t = get_time();
-    uint16_t dt = t - s_motor_a.time;
-    s_motor_a.time = t;
-    dbgm.ocr = OCR1A;
-    dbgm.dt = dt;
-    dbgm.time = t;
-    dbgm.change = true;
 
     const uint8_t mask = MA_SENSA_BIT | MA_SENSB_BIT;
     uint8_t sens = MA_SENS_PIN & mask;
@@ -130,31 +112,38 @@ ISR (MA_SENS_PCINT_VECT) {
         default:
             ++s_motor_a.skip;
             dir = s_motor_a.last_dir;
+            // if we skipped we need to increment two times
+            s_motor_a.count[2] += dir;
             break;
     }
 
-    if (s_motor_a.last_dir == dir && dir != 0 && dt <= MAX_INTERVAL)
-    {
-        s_motor_a.cur_interval = dt;
-    }
-    else
-    {
-        s_motor_a.cur_interval = MAX_INTERVAL;
-    }
-    dbgm.interval = s_motor_a.cur_interval;
-    dbgm.dir = dir;
-    s_motor_a.last_dir = dir;
-    s_motor_a.count += dir;
-
-    if (s_motor_a.count >= FULL_ROT_COUNT)
-        s_motor_a.count -= FULL_ROT_COUNT;
-    else if (s_motor_a.count < 0)
-        s_motor_a.count += FULL_ROT_COUNT;
-
     s_motor_a.sens = sens;
+    s_motor_a.last_dir = dir;
 
-    if (s_motor_a.count == s_motor_a.target)
+    s_motor_a.time[2] = t;
+    s_motor_a.count[2] += dir;
+
+    if (s_motor_a.count[2] >= MOTOR_FULL_ROTATION) {
+        for (uint8_t i = 0; i < 3; ++i)
+            s_motor_a.count[i] -= MOTOR_FULL_ROTATION;
+    } else if (s_motor_a.count[2] < 0) {
+        for (uint8_t i = 0; i < 3; ++i)
+            s_motor_a.count[i] += MOTOR_FULL_ROTATION;
+    }
+
+    if (s_motor_a.count[2] == s_motor_a.target)
         motor_stop();
+
+    int16_t dc = s_motor_a.count[2] - s_motor_a.count[1];
+    if (dc >= 12 || dc <= -12)
+    {
+        s_motor_a.feed = OCR1A;
+        for (uint8_t i = 0; i < 2; ++i) {
+            s_motor_a.count[i] = s_motor_a.count[i + 1];
+            s_motor_a.time[i] = s_motor_a.time[i + 1];
+        }
+        s_motor_a.update = true;
+    }
 }
 
 ISR (TIMER1_OVF_vect) {
@@ -164,46 +153,89 @@ ISR (TIMER1_OVF_vect) {
 
     ++s_motor_a.timer_ovf;
     uint16_t t = (s_motor_a.timer_ovf << 8) | TCNT1;
-    uint16_t dt = t - s_motor_a.time;
+    uint16_t dt = s_motor_a.time[1] - s_motor_a.time[0];
+    uint16_t dt2 = t - s_motor_a.time[2];
+    int16_t dc = s_motor_a.count[1] - s_motor_a.count[0];
 
+    uint16_t spd = 0;
+
+    // data too old?
+    if (dt2 > MAX_INTERVAL) {
+        for (uint8_t i = 2; i > 0; --i) {
+            s_motor_a.time[i-1] = s_motor_a.time[i] - MAX_INTERVAL;
+            s_motor_a.count[i - 1] = s_motor_a.count[i];
+        }
+    }
+    else if (dt < MAX_INTERVAL)
+        spd = SPEED(dc, dt);
+
+    dbgt.dt2 = dt2;
+    dbgt.dc = dc;
     dbgt.dt = dt;
-    dbgt.time = s_motor_a.time;
-
-    if (dt > MAX_INTERVAL)
-    {
-        s_motor_a.time = t - MAX_INTERVAL;
-        dt = MAX_INTERVAL;
-    }
-
-    dbgt.interval = s_motor_a.cur_interval;
-    dbgt.dt2 = dt;
-
-    if (dt > s_motor_a.cur_interval)
-    {
-        s_motor_a.cur_interval = dt;
-    }
+    dbgt.spd = spd;
+    dbgt.change = true;
 
     // current feed
     uint16_t ocr0 = OCR1A;
     dbgt.ocr0 = ocr0;
+    dbgt.tspd = 0;
+    dbgt.count = s_motor_a.count;
     // if (ocr == 0 && s_motor_a.cur_interval > s_motor_a.target_interval) {
     //     dbgt.feed = 0;
     //     ++ocr;
     // } else {
-    uint16_t feed =
-        (uint16_t)((uint32_t)s_motor_a.cur_interval * (uint32_t)ocr0 /
-                   (uint32_t)s_motor_a.target_interval);
-    dbgt.feed = feed;
-    uint16_t ocr1 = (ocr0 * 31 + feed * 1) / 32;
-    if (ocr1 > 255)
-        ocr1 = 255;
-    // }
-    if (ocr1 == ocr0 && s_motor_a.target_interval < s_motor_a.cur_interval) {
-        ocr1 = ocr0 + 1;
+
+    uint16_t ocr1;
+    uint16_t tspd = s_motor_a.target_spd;
+
+    if (tspd == 0) {
+        int16_t dangle = s_motor_a.target - s_motor_a.count[2];
+        if (dangle < 0) dangle += MOTOR_FULL_ROTATION;
+        if (dangle >= MOTOR_FULL_ROTATION) dangle -= MOTOR_FULL_ROTATION;
+
+        // estimate angle at current speed after some time
+        int16_t est = dangle - DISTANCE(spd, MIN_INTERVAL * 64);
+        if (est < 0) est = 0;
+        dbgt.est = est;
+        // calculate target speed
+        tspd = SPEED(est, MIN_INTERVAL * 64);
+        if (tspd > s_motor_a.max_spd) tspd = s_motor_a.max_spd;
+
+    }
+    dbgt.tspd = tspd;
+
+    if (spd == 0) {
+        ocr1 = ocr0;
+        dbgt.feed = 0xffff;
+
+        // startup help
+        if (spd < tspd && dt2 > TIMER_INTERVAL(20)) {
+            ocr1 = ocr0 + 1;
+        }
+    } else if (s_motor_a.update) {
+        uint16_t feed =
+            (uint16_t)((uint32_t)tspd * (uint32_t)s_motor_a.feed / (uint32_t)spd);
+        dbgt.feed = feed;
+        ocr1 = (ocr0 * 63 + feed * 1) / 64;
+
+        // microsteps
+        if (ocr1 == ocr0 && feed < ocr1)
+            --ocr1;
+        else if (ocr1 == ocr0 && feed > ocr1)
+            ++ocr1;
+
+        if (ocr1 < s_motor_a.min_feed)
+            ocr1 = s_motor_a.min_feed;
+    } else {
+        ocr1 = ocr0;
     }
 
+    s_motor_a.update = false;
+
+    if (ocr1 > 255)
+        ocr1 = 255;
+
     dbgt.ocr1 = ocr1;
-    dbgt.change = true;
 
     OCR1A = ocr1;
 }
@@ -231,11 +263,13 @@ void motor_init(void) {
 }
 
 void motor_start(void) {
-    s_motor_a.cur_interval = MAX_INTERVAL;
     s_motor_a.timer_ovf = 0;
     s_motor_a.last_dir = 0;
-    s_motor_a.time = (uint16_t)(0 - MAX_INTERVAL);
+    for (uint8_t i = 0; i < 3; ++i)
+        s_motor_a.time[i] = (uint16_t)(i - 2) * MAX_INTERVAL;
     s_motor_a.skip = 0;
+    s_motor_a.update = false;
+    s_motor_a.feed = 0;
 
     // OCR1A = 0xFFFF / s_motor_a.target_interval;
 
@@ -253,23 +287,41 @@ uint8_t motor_get_feed(void)
     return (uint8_t)OCR1A;
 }
 
-void motor_set_speed(uint16_t spd) {
-    if (spd > 0)
-        s_motor_a.target_interval = 0xFFFF / spd;
-    else
-        s_motor_a.target_interval = 0xFFFF;
+void motor_set_speed(uint8_t minfeed, uint16_t spd) {
+    s_motor_a.min_feed = minfeed;
+    s_motor_a.max_spd = spd;
+    s_motor_a.target_spd = spd;
 }
 
-void motor_move(uint16_t minspd, int16_t delta) {
-
+void motor_move(uint8_t minfeed, uint16_t maxspd, int16_t angle) {
+    s_motor_a.min_feed = minfeed;
+    s_motor_a.max_spd = maxspd;
+    s_motor_a.target_spd = 0;
+    motor_set_target(angle);
 }
 
 int16_t motor_get_count(void) {
-    return s_motor_a.count;
+    return s_motor_a.count[2];
 }
 
 uint16_t motor_get_speed(void) {
-    return 0xFFFF / s_motor_a.cur_interval;
+    LOCKI();
+    int16_t c0 = s_motor_a.count[0];
+    int16_t c1 = s_motor_a.count[1];
+    uint16_t t0 = s_motor_a.time[0];
+    uint16_t t1 = s_motor_a.time[1];
+    UNLOCKI();
+
+    uint16_t dt = t1 - t0;
+    if (dt == 0) dt = 1;
+
+    return (c1 - c0) / dt;
+}
+
+void motor_set_target(int16_t angle) {
+    while (angle < 0) angle += MOTOR_FULL_ROTATION;
+    while (angle >= MOTOR_FULL_ROTATION) angle -= MOTOR_FULL_ROTATION;
+    s_motor_a.target = angle;
 }
 
 uint16_t motor_get_time(void)
@@ -289,4 +341,6 @@ void motor_stop(void) {
     TCCR1A &= ~(1 << COM1A1);
     // disable interrupts
     TIMSK1 = 0;
+    // reset feed
+    OCR1A = 0;
 }

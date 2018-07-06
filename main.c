@@ -70,7 +70,21 @@ static void update_speed(int16_t d) {
     if (spd < 0) spd = 0;
     if (spd > 1023) spd = 1023;
     printf("speed: %d, dt: %d\n", spd, spd > 0 ? 0xFFFF / spd : 0xFFFF);
-    motor_set_speed((uint16_t)spd);
+    motor_set_speed(30, (uint16_t)spd);
+}
+
+static void update_target(int16_t a) {
+    static int16_t angle = 0;
+    angle = (angle + a + MOTOR_FULL_ROTATION) % MOTOR_FULL_ROTATION;
+    printf("angle: %d\n", angle);
+    motor_set_target(angle);
+}
+
+static void update_move(int16_t a) {
+    static int16_t angle = 0;
+    angle = (angle + a + MOTOR_FULL_ROTATION) % MOTOR_FULL_ROTATION;
+    printf("target: %d\n", angle);
+    motor_move(30, 300, angle);
 }
 
 int main(void) {
@@ -94,7 +108,7 @@ int main(void) {
     for (;;) {
         // motor_debug();
         debug_dump_timer();
-        debug_dump_motor();
+        // debug_dump_motor();
         if (debug_char_pending()) {
             CHECKPOINT;
             char c = debug_getchar();
@@ -102,6 +116,10 @@ int main(void) {
             case 't': measure_timer(); break;
             case '+': update_speed(1); break;
             case '-': update_speed(-1); break;
+            case 'l': update_move(100); break;
+            case 'k': update_move(-100); break;
+            case 'm': update_target(100); break;
+            case 'n': update_target(-100); break;
             case '.': motor_start(); printf("motor started\n"); break;
             case ',': motor_stop(); printf("motor stopped\n"); break;
             case 'c': printf("count: %d, skip: %d, spd: %u, feed: %u, time: %u\n", motor_get_count(), motor_get_skip(), motor_get_speed(), motor_get_feed(), motor_get_time()); break;
