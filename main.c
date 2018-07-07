@@ -71,6 +71,7 @@ static void update_speed(int16_t d) {
     if (spd > 1023) spd = 1023;
     printf("speed: %d, dt: %d\n", spd, spd > 0 ? 0xFFFF / spd : 0xFFFF);
     motor_set_speed(30, (uint16_t)spd);
+    motor_unset_target();
 }
 
 static void update_target(int16_t a) {
@@ -107,7 +108,7 @@ int main(void) {
 
     for (;;) {
         // motor_debug();
-        debug_dump_timer();
+        motor_dump_pos_sens();
         // debug_dump_motor();
         if (debug_char_pending()) {
             CHECKPOINT;
@@ -120,6 +121,8 @@ int main(void) {
             case 'k': update_move(-100); break;
             case 'm': update_target(100); break;
             case 'n': update_target(-100); break;
+            case 'o': motor_set_pos_sensor(false); break;
+            case 'p': motor_set_pos_sensor(true); break;
             case '.': motor_start(); printf("motor started\n"); break;
             case ',': motor_stop(); printf("motor stopped\n"); break;
             case 'c': printf("count: %d, skip: %d, spd: %u, feed: %u, time: %u\n", motor_get_count(), motor_get_skip(), motor_get_speed(), motor_get_feed(), motor_get_time()); break;

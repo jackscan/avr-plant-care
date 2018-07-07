@@ -3,6 +3,8 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
+#include <util/delay.h>
+
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
@@ -21,6 +23,16 @@
 #define MA_SENS_PCINT_VECT PCINT1_vect
 #define MA_SENSA_PCINT PCINT8
 #define MA_SENSB_PCINT PCINT9
+
+#define MA_POS_PCMSK PCMSK2
+#define MA_POS_PCIE PCIE2
+#define MA_POS_PCINT_VECT PCINT2_vect
+#define MA_POS_PCINT PCINT18
+#define MA_POS_DDR DDRD
+#define MA_POS_PORT PORTD
+#define MA_POS_ENABLE_BIT (1 << PD3)
+#define MA_POS_BIT (1 << PD2)
+#define MA_POS_PIN PIND
 
 // 1/1024
 // #define CLOCK_SELECT ((1 << CS12) | (1 << CS10))
@@ -52,9 +64,11 @@ static struct
     int16_t count[3];
     uint16_t time[3];
     uint8_t feed;
+
+    int16_t pos[2];
+    bool pos_sens;
     bool update;
 } s_motor_a;
-
 
 static struct {
     uint16_t ocr0, ocr1;
@@ -81,7 +95,6 @@ void debug_dump_timer(void) {
                dbgt_tmp.feed);
     }
 }
-
 
 static uint16_t get_time(void) {
     uint16_t ovf = s_motor_a.timer_ovf;
@@ -179,7 +192,7 @@ ISR (TIMER1_OVF_vect) {
     uint16_t ocr0 = OCR1A;
     dbgt.ocr0 = ocr0;
     dbgt.tspd = 0;
-    dbgt.count = s_motor_a.count;
+    dbgt.count = s_motor_a.count[2];
     // if (ocr == 0 && s_motor_a.cur_interval > s_motor_a.target_interval) {
     //     dbgt.feed = 0;
     //     ++ocr;
@@ -240,6 +253,39 @@ ISR (TIMER1_OVF_vect) {
     OCR1A = ocr1;
 }
 
+void motor_dump_pos_sens(void) {
+    static bool init = false;
+    static bool sens = false;
+    if (sens != s_motor_a.pos_sens) {
+        sens = s_motor_a.pos_sens;
+        if (!init) {
+            init = true;
+            return;
+        }
+        int16_t p0 = s_motor_a.pos[0];
+        int16_t p1 = s_motor_a.pos[1];
+        if (p1 < p0) p1 += MOTOR_FULL_ROTATION;
+        int16_t p = (p0 + p1) / 2;
+        if (p >= MOTOR_FULL_ROTATION) p -= MOTOR_FULL_ROTATION;
+        if (p0 != p1)
+            printf("p: %d %d %d %d\n", sens ? 1 : 0, s_motor_a.pos[0], s_motor_a.pos[1], p);
+        else
+            printf("p: %d %d\n", sens ? 1 : 0, s_motor_a.pos[0]);
+    }
+}
+
+ISR (MA_POS_PCINT_VECT) {
+    bool sens = !!(MA_POS_PIN & MA_POS_BIT);
+    if (sens == s_motor_a.pos_sens)
+        return;
+
+    if (!sens)
+        s_motor_a.pos[0] = s_motor_a.count[2];
+    s_motor_a.pos[1] = s_motor_a.count[2];
+
+    s_motor_a.pos_sens = sens;
+}
+
 void motor_init(void) {
     PRR &= ~(1 << PRTIM1);
 
@@ -255,11 +301,31 @@ void motor_init(void) {
     s_motor_a.sens = MA_SENS_PIN & (MA_SENSA_BIT | MA_SENSB_BIT);
     s_motor_a.target = -1;
 
+    MA_POS_PORT &= ~(MA_POS_BIT | MA_POS_ENABLE_BIT);
+    MA_POS_DDR |= MA_POS_ENABLE_BIT;
+    MA_POS_DDR &= ~MA_POS_BIT;
+
+    MA_POS_PCMSK = (1 << MA_POS_PCINT);
+
     // 8bit fast pwm
     TCCR1A = (1 << WGM10);
     TCCR1B = (1 << WGM12);
 
     TCNT1 = 0;
+}
+
+void motor_set_pos_sensor(bool enable)
+{
+    if (enable) {
+        MA_POS_PORT |= MA_POS_ENABLE_BIT;
+        // wait for powerup
+        _delay_ms(1);
+        s_motor_a.pos_sens = !!(MA_POS_PIN & MA_POS_BIT);
+        PCICR |= (1 << MA_POS_PCIE);
+    } else {
+        PCICR &= ~(1 << MA_POS_PCIE);
+        MA_POS_PORT &= ~MA_POS_ENABLE_BIT;
+    }
 }
 
 void motor_start(void) {
@@ -322,6 +388,10 @@ void motor_set_target(int16_t angle) {
     while (angle < 0) angle += MOTOR_FULL_ROTATION;
     while (angle >= MOTOR_FULL_ROTATION) angle -= MOTOR_FULL_ROTATION;
     s_motor_a.target = angle;
+}
+
+void motor_unset_target(void) {
+    s_motor_a.target = -1;
 }
 
 uint16_t motor_get_time(void)
