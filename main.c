@@ -76,16 +76,16 @@ static void update_speed(int16_t d) {
 
 static void update_target(int16_t a) {
     static int16_t angle = 0;
-    angle = (angle + a + MOTOR_FULL_ROTATION) % MOTOR_FULL_ROTATION;
+    angle = (angle + a + CPR) % CPR;
     printf("angle: %d\n", angle);
     motor_set_target(angle);
 }
 
 static void update_move(int16_t a) {
     static int16_t angle = 0;
-    angle = (angle + a + MOTOR_FULL_ROTATION) % MOTOR_FULL_ROTATION;
+    angle = (angle + a + CPR) % CPR;
     printf("target: %d\n", angle);
-    motor_move(30, 300, angle);
+    motor_move(30, 300, angle, 1);
 }
 
 int main(void) {
@@ -106,6 +106,8 @@ int main(void) {
     sei();
     printf("\nboot: %#x\n", mcusr);
 
+    motor_set_pos_sensor(true);
+
     for (;;) {
         // motor_debug();
         motor_dump_pos_sens();
@@ -125,7 +127,13 @@ int main(void) {
             case 'p': motor_set_pos_sensor(true); break;
             case '.': motor_start(); printf("motor started\n"); break;
             case ',': motor_stop(); printf("motor stopped\n"); break;
-            case 'c': printf("count: %d, skip: %d, spd: %u, feed: %u, time: %u\n", motor_get_count(), motor_get_skip(), motor_get_speed(), motor_get_feed(), motor_get_time()); break;
+            case 'c':
+                printf("count: %d, skip: %d, spd: %u, feed: %u, time: %u, rev: "
+                       "%d\n",
+                       motor_get_count(), motor_get_skip(), motor_get_speed(),
+                       motor_get_feed(), motor_get_time(),
+                       motor_get_remaining_revolutions());
+                break;
             // case 'd': motor_dump_calc(); break;
             case '?': printf("PRR: %#x, GTCCR: %#x, TCCR1A: %#x TCCR1B: %#x, TCNT1: %u, TCCR2A: %#x TCCR2B: %#x, TCNT2: %u\n", PRR, GTCCR, TCCR1A, TCCR1B, TCNT1, TCCR2A, TCCR2B, TCNT2); break;
             }

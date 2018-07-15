@@ -44,6 +44,7 @@
 #define TIMER_INTERVAL(MS) ((F_CPU * (unsigned long)(MS)) / (256UL * 1000UL))
 #define MAX_INTERVAL TIMER_INTERVAL(200UL)
 #define MIN_INTERVAL TIMER_INTERVAL(10UL)
+#define FORESIGHT MIN_INTERVAL * 64UL
 #define SPEED(DC, DT) (uint16_t)((uint32_t)(DC) * 4096UL / (DT))
 #define DISTANCE(SPD, DT) (int16_t)(((uint32_t)(SPD) * (uint32_t)(DT)) / 4096UL)
 
@@ -54,6 +55,7 @@
 static struct
 {
     int16_t target;
+    int8_t revolutions;
     uint16_t skip;
     uint8_t sens;
     uint8_t last_dir;
@@ -106,6 +108,25 @@ static uint16_t get_time(void) {
     return (ovf << 8) | tcnt;
 }
 
+static void update_count(int8_t dir) {
+    s_motor_a.count[2] += dir;
+
+    if (s_motor_a.count[2] >= CPR) {
+        for (uint8_t i = 0; i < 3; ++i)
+            s_motor_a.count[i] -= CPR;
+    } else if (s_motor_a.count[2] < 0) {
+        for (uint8_t i = 0; i < 3; ++i)
+            s_motor_a.count[i] += CPR;
+    }
+
+    if (s_motor_a.count[2] == s_motor_a.target) {
+        if (s_motor_a.revolutions > 0)
+            --s_motor_a.revolutions;
+        else
+            motor_stop();
+    }
+}
+
 ISR (MA_SENS_PCINT_VECT) {
     uint16_t t = get_time();
 
@@ -126,26 +147,15 @@ ISR (MA_SENS_PCINT_VECT) {
             ++s_motor_a.skip;
             dir = s_motor_a.last_dir;
             // if we skipped we need to increment two times
-            s_motor_a.count[2] += dir;
+            update_count(dir);
             break;
     }
 
     s_motor_a.sens = sens;
     s_motor_a.last_dir = dir;
-
     s_motor_a.time[2] = t;
-    s_motor_a.count[2] += dir;
 
-    if (s_motor_a.count[2] >= MOTOR_FULL_ROTATION) {
-        for (uint8_t i = 0; i < 3; ++i)
-            s_motor_a.count[i] -= MOTOR_FULL_ROTATION;
-    } else if (s_motor_a.count[2] < 0) {
-        for (uint8_t i = 0; i < 3; ++i)
-            s_motor_a.count[i] += MOTOR_FULL_ROTATION;
-    }
-
-    if (s_motor_a.count[2] == s_motor_a.target)
-        motor_stop();
+    update_count(dir);
 
     int16_t dc = s_motor_a.count[2] - s_motor_a.count[1];
     if (dc >= 12 || dc <= -12)
@@ -202,18 +212,21 @@ ISR (TIMER1_OVF_vect) {
     uint16_t tspd = s_motor_a.target_spd;
 
     if (tspd == 0) {
-        int16_t dangle = s_motor_a.target - s_motor_a.count[2];
-        if (dangle < 0) dangle += MOTOR_FULL_ROTATION;
-        if (dangle >= MOTOR_FULL_ROTATION) dangle -= MOTOR_FULL_ROTATION;
+        if (s_motor_a.revolutions > 0) {
+            tspd = s_motor_a.max_spd;
+        } else {
+            int16_t dangle = s_motor_a.target - s_motor_a.count[2];
+            if (dangle < 0) dangle += CPR;
+            if (dangle >= CPR) dangle -= CPR;
 
-        // estimate angle at current speed after some time
-        int16_t est = dangle - DISTANCE(spd, MIN_INTERVAL * 64);
-        if (est < 0) est = 0;
-        dbgt.est = est;
-        // calculate target speed
-        tspd = SPEED(est, MIN_INTERVAL * 64);
-        if (tspd > s_motor_a.max_spd) tspd = s_motor_a.max_spd;
-
+            // estimate angle at current speed after some time
+            int16_t est = dangle - DISTANCE(spd, FORESIGHT);
+            if (est < 0) est = 0;
+            dbgt.est = est;
+            // calculate target speed
+            tspd = SPEED(est, FORESIGHT);
+            if (tspd > s_motor_a.max_spd) tspd = s_motor_a.max_spd;
+        }
     }
     dbgt.tspd = tspd;
 
@@ -264,9 +277,10 @@ void motor_dump_pos_sens(void) {
         }
         int16_t p0 = s_motor_a.pos[0];
         int16_t p1 = s_motor_a.pos[1];
-        if (p1 < p0) p1 += MOTOR_FULL_ROTATION;
+        if (p0 == p1) return;
+        if (p1 < p0) p1 += CPR;
         int16_t p = (p0 + p1) / 2;
-        if (p >= MOTOR_FULL_ROTATION) p -= MOTOR_FULL_ROTATION;
+        if (p >= CPR) p -= CPR;
         if (p0 != p1)
             printf("p: %d %d %d %d\n", sens ? 1 : 0, s_motor_a.pos[0], s_motor_a.pos[1], p);
         else
@@ -359,15 +373,21 @@ void motor_set_speed(uint8_t minfeed, uint16_t spd) {
     s_motor_a.target_spd = spd;
 }
 
-void motor_move(uint8_t minfeed, uint16_t maxspd, int16_t angle) {
+void motor_move(uint8_t minfeed, uint16_t maxspd, int16_t angle,
+                int8_t revolutions) {
     s_motor_a.min_feed = minfeed;
     s_motor_a.max_spd = maxspd;
     s_motor_a.target_spd = 0;
+    s_motor_a.revolutions = revolutions;
     motor_set_target(angle);
 }
 
 int16_t motor_get_count(void) {
     return s_motor_a.count[2];
+}
+
+int8_t motor_get_remaining_revolutions(void) {
+    return s_motor_a.revolutions;
 }
 
 uint16_t motor_get_speed(void) {
@@ -385,9 +405,17 @@ uint16_t motor_get_speed(void) {
 }
 
 void motor_set_target(int16_t angle) {
-    while (angle < 0) angle += MOTOR_FULL_ROTATION;
-    while (angle >= MOTOR_FULL_ROTATION) angle -= MOTOR_FULL_ROTATION;
+    while (angle < 0) angle += CPR;
+    while (angle >= CPR) angle -= CPR;
     s_motor_a.target = angle;
+
+    // stopping distance
+    int16_t d = 2 * DISTANCE(s_motor_a.max_spd, FORESIGHT);
+    int16_t da = angle - motor_get_count();
+    if (da < 0) da += CPR;
+    if (da >= CPR) da -= CPR;
+    if (da < d && s_motor_a.revolutions == 0)
+        s_motor_a.revolutions = 1;
 }
 
 void motor_unset_target(void) {
