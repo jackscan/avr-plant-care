@@ -106,7 +106,6 @@ int main(void) {
     sei();
     printf("\nboot: %#x\n", mcusr);
 
-    motor_set_pos_sensor(true);
 
     for (;;) {
         // motor_debug();
@@ -123,16 +122,18 @@ int main(void) {
             case 'k': update_move(-100); break;
             case 'm': update_target(100); break;
             case 'n': update_target(-100); break;
-            case 'o': motor_set_pos_sensor(false); break;
-            case 'p': motor_set_pos_sensor(true); break;
+            case 'u': motor_unset_calibration(); break;
+            case 'o': motor_disable_pos_sensor(); break;
+            case 'p': motor_enable_pos_sensor(); break;
             case '.': motor_start(); printf("motor started\n"); break;
             case ',': motor_stop(); printf("motor stopped\n"); break;
             case 'c':
-                printf("count: %d, skip: %d, spd: %u, feed: %u, time: %u, rev: "
-                       "%d\n",
-                       motor_get_count(), motor_get_skip(), motor_get_speed(),
+                printf("pos: %d, skip: %d, spd: %u, feed: %u, time: %u, rev: "
+                       "%d, cal: %i\n",
+                       motor_get_pos(), motor_get_skip(), motor_get_speed(),
                        motor_get_feed(), motor_get_time(),
-                       motor_get_remaining_revolutions());
+                       motor_get_remaining_revolutions(),
+                       motor_pos_is_calibrated());
                 break;
             // case 'd': motor_dump_calc(); break;
             case '?': printf("PRR: %#x, GTCCR: %#x, TCCR1A: %#x TCCR1B: %#x, TCNT1: %u, TCCR2A: %#x TCCR2B: %#x, TCNT2: %u\n", PRR, GTCCR, TCCR1A, TCCR1B, TCNT1, TCCR2A, TCCR2B, TCNT2); break;

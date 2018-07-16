@@ -70,6 +70,7 @@ static struct
     int16_t pos[2];
     bool pos_sens;
     bool update;
+    bool calibrated;
 } s_motor_a;
 
 static struct {
@@ -277,14 +278,11 @@ void motor_dump_pos_sens(void) {
         }
         int16_t p0 = s_motor_a.pos[0];
         int16_t p1 = s_motor_a.pos[1];
-        if (p0 == p1) return;
+        if (p0 == p1 || p0 == -1) return;
         if (p1 < p0) p1 += CPR;
         int16_t p = (p0 + p1) / 2;
         if (p >= CPR) p -= CPR;
-        if (p0 != p1)
-            printf("p: %d %d %d %d\n", sens ? 1 : 0, s_motor_a.pos[0], s_motor_a.pos[1], p);
-        else
-            printf("p: %d %d\n", sens ? 1 : 0, s_motor_a.pos[0]);
+        printf("p: %d %d %d %d %d %d\n", sens ? 1 : 0, s_motor_a.pos[0], s_motor_a.pos[1], p, s_motor_a.calibrated, s_motor_a.count[2]);
     }
 }
 
@@ -297,6 +295,18 @@ ISR (MA_POS_PCINT_VECT) {
         s_motor_a.pos[0] = s_motor_a.count[2];
     s_motor_a.pos[1] = s_motor_a.count[2];
 
+    if (sens && !s_motor_a.calibrated && s_motor_a.pos[0] >= 0) {
+        // calibrate
+        s_motor_a.calibrated = true;
+        motor_disable_pos_sensor();
+        int16_t p0 = s_motor_a.pos[0];
+        int16_t p1 = s_motor_a.pos[1];
+        if (p1 < p0) p1 += CPR;
+        int16_t p = (p1 - p0) / 2;
+        int16_t delta = p - s_motor_a.count[2];
+        for (uint8_t i = 0; i < 3; ++i)
+            s_motor_a.count[i] += delta;
+    }
     s_motor_a.pos_sens = sens;
 }
 
@@ -314,6 +324,9 @@ void motor_init(void) {
 
     s_motor_a.sens = MA_SENS_PIN & (MA_SENSA_BIT | MA_SENSB_BIT);
     s_motor_a.target = -1;
+    s_motor_a.calibrated = false;
+    s_motor_a.pos[0] = -1;
+    s_motor_a.pos[1] = -1;
 
     MA_POS_PORT &= ~(MA_POS_BIT | MA_POS_ENABLE_BIT);
     MA_POS_DDR |= MA_POS_ENABLE_BIT;
@@ -328,18 +341,18 @@ void motor_init(void) {
     TCNT1 = 0;
 }
 
-void motor_set_pos_sensor(bool enable)
+void motor_enable_pos_sensor(void)
 {
-    if (enable) {
-        MA_POS_PORT |= MA_POS_ENABLE_BIT;
-        // wait for powerup
-        _delay_ms(1);
-        s_motor_a.pos_sens = !!(MA_POS_PIN & MA_POS_BIT);
-        PCICR |= (1 << MA_POS_PCIE);
-    } else {
-        PCICR &= ~(1 << MA_POS_PCIE);
-        MA_POS_PORT &= ~MA_POS_ENABLE_BIT;
-    }
+    MA_POS_PORT |= MA_POS_ENABLE_BIT;
+    // wait for powerup
+    _delay_ms(1);
+    s_motor_a.pos_sens = !!(MA_POS_PIN & MA_POS_BIT);
+    PCICR |= (1 << MA_POS_PCIE);
+}
+
+void motor_disable_pos_sensor(void) {
+    PCICR &= ~(1 << MA_POS_PCIE);
+    MA_POS_PORT &= ~MA_POS_ENABLE_BIT;
 }
 
 void motor_start(void) {
@@ -382,8 +395,16 @@ void motor_move(uint8_t minfeed, uint16_t maxspd, int16_t angle,
     motor_set_target(angle);
 }
 
-int16_t motor_get_count(void) {
+int16_t motor_get_pos(void) {
     return s_motor_a.count[2];
+}
+
+bool motor_pos_is_calibrated(void) {
+    return s_motor_a.calibrated;
+}
+
+void motor_unset_calibration(void) {
+    s_motor_a.calibrated = false;
 }
 
 int8_t motor_get_remaining_revolutions(void) {
@@ -405,17 +426,28 @@ uint16_t motor_get_speed(void) {
 }
 
 void motor_set_target(int16_t angle) {
-    while (angle < 0) angle += CPR;
-    while (angle >= CPR) angle -= CPR;
-    s_motor_a.target = angle;
-
     // stopping distance
     int16_t d = 2 * DISTANCE(s_motor_a.max_spd, FORESIGHT);
-    int16_t da = angle - motor_get_count();
+    while (angle < 0) angle += CPR;
+    while (angle >= CPR) angle -= CPR;
+    LOCKI();
+    s_motor_a.target = angle;
+    int16_t da = angle - motor_get_pos();
     if (da < 0) da += CPR;
     if (da >= CPR) da -= CPR;
     if (da < d && s_motor_a.revolutions == 0)
         s_motor_a.revolutions = 1;
+    UNLOCKI();
+
+    if (!s_motor_a.calibrated) {
+        motor_enable_pos_sensor();
+    }
+
+    // TODO: we probably can use da to check if we need 1 or 2 revolutions
+    // run at least two revolutions for calibration
+    // one revolution might not be sufficient in pathological cases
+    if (s_motor_a.revolutions < 2 && !s_motor_a.calibrated)
+        s_motor_a.revolutions = 2;
 }
 
 void motor_unset_target(void) {
@@ -441,4 +473,7 @@ void motor_stop(void) {
     TIMSK1 = 0;
     // reset feed
     OCR1A = 0;
+
+    if (s_motor_a.skip > 0)
+        motor_unset_calibration();
 }
