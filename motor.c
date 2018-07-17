@@ -41,6 +41,8 @@
 // 1/64
 // #define CLOCK_SELECT ((1 << CS11) | (1 << CS10))
 
+#define POS_CAL_WIDTH   60
+#define POS_CAL_WIDTH_TOL 3
 #define TIMER_INTERVAL(MS) ((F_CPU * (unsigned long)(MS)) / (256UL * 1000UL))
 #define MAX_INTERVAL TIMER_INTERVAL(200UL)
 #define MIN_INTERVAL TIMER_INTERVAL(10UL)
@@ -282,7 +284,7 @@ void motor_dump_pos_sens(void) {
         if (p1 < p0) p1 += CPR;
         int16_t p = (p0 + p1) / 2;
         if (p >= CPR) p -= CPR;
-        printf("p: %d %d %d %d %d %d\n", sens ? 1 : 0, s_motor_a.pos[0], s_motor_a.pos[1], p, s_motor_a.calibrated, s_motor_a.count[2]);
+        printf("p: %d %d %d %d %d %d %d\n", sens ? 1 : 0, s_motor_a.pos[0], s_motor_a.pos[1], p, p1 - p0, s_motor_a.calibrated, s_motor_a.count[2]);
     }
 }
 
@@ -297,16 +299,22 @@ ISR (MA_POS_PCINT_VECT) {
 
     if (sens && !s_motor_a.calibrated && s_motor_a.pos[0] >= 0) {
         // calibrate
-        s_motor_a.calibrated = true;
-        motor_disable_pos_sensor();
         int16_t p0 = s_motor_a.pos[0];
         int16_t p1 = s_motor_a.pos[1];
         if (p1 < p0) p1 += CPR;
-        int16_t p = (p1 - p0) / 2;
-        int16_t delta = p - s_motor_a.count[2];
+        int16_t d = (p1 - p0);
+        int16_t delta = d / 2 - s_motor_a.count[2];
         for (uint8_t i = 0; i < 3; ++i)
             s_motor_a.count[i] += delta;
+
+        // plausibility check
+        if (POS_CAL_WIDTH - POS_CAL_WIDTH_TOL <= d &&
+            d <= POS_CAL_WIDTH + POS_CAL_WIDTH_TOL) {
+            s_motor_a.calibrated = true;
+            motor_disable_pos_sensor();
+        }
     }
+
     s_motor_a.pos_sens = sens;
 }
 
