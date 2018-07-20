@@ -433,9 +433,19 @@ uint16_t motor_get_speed(void) {
     return (c1 - c0) / dt;
 }
 
+static uint16_t motor_get_spd(void) {
+    LOCKI();
+    uint16_t dt = s_motor_a.time[1] - s_motor_a.time[0];
+    int16_t dc = s_motor_a.count[1] - s_motor_a.count[0];
+    UNLOCKI();
+
+    return (dt < MAX_INTERVAL) ? SPEED(dc, dt) : 0;
+}
+
 void motor_set_target(int16_t angle) {
+    uint16_t spd = motor_get_spd();
     // stopping distance
-    int16_t d = 2 * DISTANCE(s_motor_a.max_spd, FORESIGHT);
+    int16_t d = 2 * DISTANCE(spd, FORESIGHT);
     while (angle < 0) angle += CPR;
     while (angle >= CPR) angle -= CPR;
     LOCKI();
