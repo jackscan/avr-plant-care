@@ -57,49 +57,27 @@
 static struct
 {
     int16_t target;
-    int8_t revolutions;
-    uint16_t skip;
-    uint8_t sens;
-    uint8_t last_dir;
+    volatile int8_t revolutions;
+    volatile uint16_t skip;
+    volatile uint8_t sens;
+    volatile uint8_t last_dir;
     uint16_t target_spd;
-    uint16_t timer_ovf;
+    volatile uint16_t timer_ovf;
     uint16_t max_spd;
     uint8_t min_feed;
-    int16_t count[3];
-    uint16_t time[3];
+    volatile int16_t count[3];
+    volatile uint16_t time[3];
+    // feed which was current at last counter updates
+    volatile uint8_t last_feed;
     uint8_t feed;
+    volatile bool feed_updated;
 
-    int16_t pos[2];
-    bool pos_sens;
-    bool update;
-    bool calibrated;
+    volatile int16_t pos[2];
+    volatile bool pos_sens;
+    // speed counter got updated
+    volatile bool update;
+    volatile bool calibrated;
 } s_motor_a;
-
-static struct {
-    uint16_t ocr0, ocr1;
-    uint16_t feed;
-    uint16_t spd;
-    uint16_t tspd;
-    int16_t dc;
-    int16_t est;
-    int16_t count;
-    uint16_t dt;
-    uint16_t dt2;
-    bool change;
-} dbgt, dbgt_tmp;
-
-void debug_dump_timer(void) {
-    if (dbgt.change) {
-        LOCKI();
-        memcpy(&dbgt_tmp, &dbgt, sizeof(dbgt));
-        dbgt.change = false;
-        UNLOCKI();
-        printf("t: %u %u %i %i %i %u %u %u %u %u \n", dbgt_tmp.spd,
-               dbgt_tmp.tspd, dbgt_tmp.est, dbgt_tmp.count, dbgt_tmp.dc,
-               dbgt_tmp.dt, dbgt_tmp.dt2, dbgt_tmp.ocr0, dbgt_tmp.ocr1,
-               dbgt_tmp.feed);
-    }
-}
 
 static uint16_t get_time(void) {
     uint16_t ovf = s_motor_a.timer_ovf;
@@ -163,7 +141,7 @@ ISR (MA_SENS_PCINT_VECT) {
     int16_t dc = s_motor_a.count[2] - s_motor_a.count[1];
     if (dc >= 12 || dc <= -12)
     {
-        s_motor_a.feed = OCR1A;
+        s_motor_a.last_feed = OCR1A;
         for (uint8_t i = 0; i < 2; ++i) {
             s_motor_a.count[i] = s_motor_a.count[i + 1];
             s_motor_a.time[i] = s_motor_a.time[i + 1];
@@ -179,11 +157,7 @@ ISR (TIMER1_OVF_vect) {
 
     ++s_motor_a.timer_ovf;
     uint16_t t = (s_motor_a.timer_ovf << 8) | TCNT1;
-    uint16_t dt = s_motor_a.time[1] - s_motor_a.time[0];
     uint16_t dt2 = t - s_motor_a.time[2];
-    int16_t dc = s_motor_a.count[1] - s_motor_a.count[0];
-
-    uint16_t spd = 0;
 
     // data too old?
     if (dt2 > MAX_INTERVAL) {
@@ -192,59 +166,71 @@ ISR (TIMER1_OVF_vect) {
             s_motor_a.count[i - 1] = s_motor_a.count[i];
         }
     }
-    else if (dt < MAX_INTERVAL)
-        spd = SPEED(dc, dt);
 
-    dbgt.dt2 = dt2;
-    dbgt.dc = dc;
-    dbgt.dt = dt;
-    dbgt.spd = spd;
-    dbgt.change = true;
+    s_motor_a.feed_updated = true;
+    OCR1A = s_motor_a.feed;
+}
+
+void motor_update_feed(void) {
+
+    // wait for feed update
+    if (!s_motor_a.feed_updated)
+        return;
+
+    LOCKI();
+    uint16_t dt = s_motor_a.time[1] - s_motor_a.time[0];
+    int16_t dc = s_motor_a.count[1] - s_motor_a.count[0];
+    uint16_t t = get_time();
+    // last count time
+    uint16_t lastt = s_motor_a.time[2];
+    // current position
+    int16_t pos = motor_get_pos();
+    // current pending revolution count
+    uint8_t rev = s_motor_a.revolutions;
+    // update of position
+    uint8_t last_feed = s_motor_a.last_feed;
+    bool update = s_motor_a.update;
+    s_motor_a.update = false;
+    UNLOCKI();
+
+    uint16_t spd = (dt < MAX_INTERVAL) ? SPEED(dc, dt) : 0;
+
+    // we're are running, wait for next position update
+    if (spd > 0 && !update)
+        return;
+
+    uint16_t dt2 = t - lastt;
+    // wait at least 20ms before updating feed on startup
+    if (spd == 0 && dt2 < TIMER_INTERVAL(20))
+        return;
 
     // current feed
-    uint16_t ocr0 = OCR1A;
-    dbgt.ocr0 = ocr0;
-    dbgt.tspd = 0;
-    dbgt.count = s_motor_a.count[2];
-    // if (ocr == 0 && s_motor_a.cur_interval > s_motor_a.target_interval) {
-    //     dbgt.feed = 0;
-    //     ++ocr;
-    // } else {
-
-    uint16_t ocr1;
+    uint16_t ocr0 = s_motor_a.feed;
+    uint16_t ocr1 = ocr0;
     uint16_t tspd = s_motor_a.target_spd;
 
     if (tspd == 0) {
-        if (s_motor_a.revolutions > 0) {
+        if (rev > 0) {
             tspd = s_motor_a.max_spd;
         } else {
-            int16_t dangle = s_motor_a.target - s_motor_a.count[2];
+            int16_t dangle = s_motor_a.target - pos;
             if (dangle < 0) dangle += CPR;
             if (dangle >= CPR) dangle -= CPR;
 
             // estimate angle at current speed after some time
             int16_t est = dangle - DISTANCE(spd, FORESIGHT);
             if (est < 0) est = 0;
-            dbgt.est = est;
             // calculate target speed
             tspd = SPEED(est, FORESIGHT);
             if (tspd > s_motor_a.max_spd) tspd = s_motor_a.max_spd;
         }
     }
-    dbgt.tspd = tspd;
 
-    if (spd == 0) {
-        ocr1 = ocr0;
-        dbgt.feed = 0xffff;
+    uint16_t feed = 0;
 
-        // startup help
-        if (spd < tspd && dt2 > TIMER_INTERVAL(20)) {
-            ocr1 = ocr0 + 1;
-        }
-    } else if (s_motor_a.update) {
-        uint16_t feed =
-            (uint16_t)((uint32_t)tspd * (uint32_t)s_motor_a.feed / (uint32_t)spd);
-        dbgt.feed = feed;
+    if (update) {
+        feed =
+            (uint16_t)((uint32_t)tspd * (uint32_t)last_feed / (uint32_t)spd);
         ocr1 = (ocr0 * 63 + feed * 1) / 64;
 
         // microsteps
@@ -252,21 +238,21 @@ ISR (TIMER1_OVF_vect) {
             --ocr1;
         else if (ocr1 == ocr0 && feed > ocr1)
             ++ocr1;
-
-        if (ocr1 < s_motor_a.min_feed)
-            ocr1 = s_motor_a.min_feed;
-    } else {
-        ocr1 = ocr0;
+    } else if (spd < tspd) {
+        // startup help
+        ocr1 = ocr0 + 1;
     }
 
-    s_motor_a.update = false;
-
-    if (ocr1 > 255)
+    if (ocr1 < s_motor_a.min_feed)
+        ocr1 = s_motor_a.min_feed;
+    else if (ocr1 > 255)
         ocr1 = 255;
 
-    dbgt.ocr1 = ocr1;
+    RELOCKI();
+    s_motor_a.feed = ocr1;
+    s_motor_a.feed_updated = false;
+    UNLOCKI();
 
-    OCR1A = ocr1;
 }
 
 void motor_dump_pos_sens(void) {
@@ -371,6 +357,7 @@ void motor_start(void) {
     s_motor_a.skip = 0;
     s_motor_a.update = false;
     s_motor_a.feed = 0;
+    s_motor_a.feed_updated = false;
 
     // OCR1A = 0xFFFF / s_motor_a.target_interval;
 
@@ -490,6 +477,7 @@ void motor_stop(void) {
     TIMSK1 = 0;
     // reset feed
     OCR1A = 0;
+    s_motor_a.feed = 0;
 
     if (s_motor_a.skip > 0)
         motor_unset_calibration();

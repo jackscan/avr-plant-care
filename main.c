@@ -110,6 +110,7 @@ int main(void) {
     for (;;) {
         // motor_debug();
         motor_dump_pos_sens();
+        motor_update_feed();
         // debug_dump_motor();
         if (debug_char_pending()) {
             CHECKPOINT;
