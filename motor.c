@@ -453,19 +453,18 @@ void motor_set_target(int16_t angle) {
     int16_t da = angle - motor_get_pos();
     if (da < 0) da += CPR;
     if (da >= CPR) da -= CPR;
-    if (da < d && s_motor_a.revolutions == 0)
-        s_motor_a.revolutions = 1;
+    int8_t minrev = 0;
+    if (da < d || !s_motor_a.calibrated)
+        minrev = 1;
+    if (!s_motor_a.calibrated && da < d + POS_CAL_WIDTH * 2)
+        minrev = 2;
+    if (s_motor_a.revolutions < minrev)
+        s_motor_a.revolutions = minrev;
     UNLOCKI();
 
     if (!s_motor_a.calibrated) {
         motor_enable_pos_sensor();
     }
-
-    // TODO: we probably can use da to check if we need 1 or 2 revolutions
-    // run at least two revolutions for calibration
-    // one revolution might not be sufficient in pathological cases
-    if (s_motor_a.revolutions < 2 && !s_motor_a.calibrated)
-        s_motor_a.revolutions = 2;
 }
 
 void motor_unset_target(void) {
