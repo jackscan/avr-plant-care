@@ -7,6 +7,7 @@
 #include "debug.h"
 #include "timer.h"
 #include "motor.h"
+#include "hx711.h"
 
 #include <avr/io.h>
 #include <avr/eeprom.h>
@@ -48,10 +49,21 @@ static uint8_t early_init(void) {
     PORTC = 0;
     PORTD = 0;
 
+    hx711_early_init();
+
     // disable all peripheral clocks
     PRR = 0xFF;
 
     return mcusr;
+}
+
+static void measure_weight_2(void) {
+    printf("w:\n");
+    for (uint8_t i = 0; i < 10; ++i) {
+        uint16_t w = hx711_read();
+        printf("%u\n", w);
+    }
+    hx711_powerdown();
 }
 
 static void measure_timer(void) {
@@ -102,10 +114,14 @@ int main(void) {
     timer_start();
 
     motor_init();
+    hx711_init();
 
     sei();
     printf("\nboot: %#x\n", mcusr);
 
+    char linebuf[64];
+    uint8_t linelen = 0;
+    bool calib = false;
 
     for (;;) {
         // motor_debug();
@@ -115,29 +131,50 @@ int main(void) {
         if (debug_char_pending()) {
             CHECKPOINT;
             char c = debug_getchar();
-            switch (c) {
-            case 't': measure_timer(); break;
-            case '+': update_speed(1); break;
-            case '-': update_speed(-1); break;
-            case 'l': update_move(100); break;
-            case 'k': update_move(-100); break;
-            case 'm': update_target(100); break;
-            case 'n': update_target(-100); break;
-            case 'u': motor_unset_calibration(); break;
-            case 'o': motor_disable_pos_sensor(); break;
-            case 'p': motor_enable_pos_sensor(); break;
-            case '.': motor_start(); printf("motor started\n"); break;
-            case ',': motor_stop(); printf("motor stopped\n"); break;
-            case 'c':
-                printf("pos: %d, skip: %d, spd: %u, feed: %u, time: %u, rev: "
-                       "%d, cal: %i\n",
-                       motor_get_pos(), motor_get_skip(), motor_get_speed(),
-                       motor_get_feed(), motor_get_time(),
-                       motor_get_remaining_revolutions(),
-                       motor_pos_is_calibrated());
-                break;
-            // case 'd': motor_dump_calc(); break;
-            case '?': printf("PRR: %#x, GTCCR: %#x, TCCR1A: %#x TCCR1B: %#x, TCNT1: %u, TCCR2A: %#x TCCR2B: %#x, TCNT2: %u\n", PRR, GTCCR, TCCR1A, TCCR1B, TCNT1, TCCR2A, TCCR2B, TCNT2); break;
+            if (calib) {
+                if (c != '\n' && c != '\r') {
+                    linebuf[linelen++] = c;
+                    printf("%c", c);
+                } else {
+                    printf("\n");
+                    linebuf[linelen] = '\0';
+                    uint32_t offset, scale;
+                    if (sscanf(linebuf, "%lu %lu", &offset, &scale) == 2) {
+                        hx711_calib(offset, scale);
+                    } else {
+                        printf("failed to read offset and scale: '%s'\n",
+                               linebuf);
+                    }
+                    linelen = 0;
+                    calib = false;
+                }
+            } else {
+                switch (c) {
+                case 't': measure_timer(); break;
+                case '1': calib = true; printf("enter offset and scale\n> "); break;
+                case 's': printf("writing calibration data\n"); hx711_write_calib(); break;
+                case 'w': measure_weight_2(); break;
+                case '+': update_speed(1); break;
+                case '-': update_speed(-1); break;
+                case 'l': update_move(100); break;
+                case 'k': update_move(-100); break;
+                case 'm': update_target(100); break;
+                case 'n': update_target(-100); break;
+                case 'u': motor_unset_calibration(); break;
+                case 'o': motor_disable_pos_sensor(); break;
+                case 'p': motor_enable_pos_sensor(); break;
+                case '.': motor_start(); printf("motor started\n"); break;
+                case ',': motor_stop(); printf("motor stopped\n"); break;
+                case 'c':
+                    printf("pos: %d, skip: %d, spd: %u, feed: %u, time: %u, rev: "
+                        "%d, cal: %i\n",
+                        motor_get_pos(), motor_get_skip(), motor_get_speed(),
+                        motor_get_feed(), motor_get_time(),
+                        motor_get_remaining_revolutions(),
+                        motor_pos_is_calibrated());
+                    break;
+                case '?': printf("PRR: %#x, GTCCR: %#x, TCCR1A: %#x TCCR1B: %#x, TCNT1: %u, TCCR2A: %#x TCCR2B: %#x, TCNT2: %u\n", PRR, GTCCR, TCCR1A, TCCR1B, TCNT1, TCCR2A, TCCR2B, TCNT2); break;
+                }
             }
         }
     }
