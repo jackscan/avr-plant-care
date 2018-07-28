@@ -4,7 +4,7 @@
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
 
-uint32_t s_count = 0;
+static __attribute__ ((section (".noinit"))) uint32_t s_count;
 
 void timer_start(void) {
     PRR &= ~(1 << PRTIM2);
