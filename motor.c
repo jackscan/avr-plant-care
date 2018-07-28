@@ -38,17 +38,19 @@
 // #define CLOCK_SELECT ((1 << CS12) | (1 << CS10))
 // 1/256
 #define CLOCK_SELECT (1 << CS12)
+#define TIMER_CLOCK_DIV 256UL
 // 1/64
 // #define CLOCK_SELECT ((1 << CS11) | (1 << CS10))
 
 #define POS_CAL_WIDTH   60
 #define POS_CAL_WIDTH_TOL 3
-#define TIMER_INTERVAL(MS) ((F_CPU * (unsigned long)(MS)) / (256UL * 1000UL))
+#define TIMER_INTERVAL(MS) ((F_CPU * (unsigned long)(MS)) / (TIMER_CLOCK_DIV * 1000UL))
 #define MAX_INTERVAL TIMER_INTERVAL(200UL)
 #define MIN_INTERVAL TIMER_INTERVAL(10UL)
 #define FORESIGHT MIN_INTERVAL * 64UL
-#define SPEED(DC, DT) (uint16_t)((uint32_t)(DC) * 4096UL / (DT))
-#define DISTANCE(SPD, DT) (int16_t)(((uint32_t)(SPD) * (uint32_t)(DT)) / 4096UL)
+#define SPD_SCALE 4096UL
+#define SPEED(DC, DT) (uint16_t)((uint32_t)(DC) * SPD_SCALE / (DT))
+#define DISTANCE(SPD, DT) (int16_t)(((uint32_t)(SPD) * (uint32_t)(DT)) / SPD_SCALE)
 
 #define LOCKI() uint8_t sreg = SREG; cli()
 #define RELOCKI() sreg = SREG; cli()
