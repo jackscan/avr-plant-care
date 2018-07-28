@@ -135,6 +135,7 @@ int main(void) {
     enum  {
         KEY_INPUT = 0,
         CALIBRATION_INPUT,
+        QTIME_INPUT,
     } input_mode = KEY_INPUT;
 
     for (;;) {
@@ -164,6 +165,13 @@ int main(void) {
                         }
                         break;
                     }
+                    case QTIME_INPUT: {
+                        uint16_t t;
+                        if (sscanf(linebuf, "%u", &t) == 1) {
+                            printf("target speed: %u\n", motor_calculate_speed(CPR, (uint8_t)(t * 4)));
+                        }
+                        break;
+                    }
                     default:
                         break;
                     }
@@ -175,6 +183,7 @@ int main(void) {
                 case 't': measure_timer(); break;
                 case '1': input_mode = CALIBRATION_INPUT; printf("enter offset and scale\n> "); break;
                 case 's': printf("writing calibration data\n"); hx711_write_calib(); break;
+                case 'q': input_mode = QTIME_INPUT; printf("enter seconds\n> "); break;
                 case 'w': measure_weight_2(); break;
                 case '+': update_speed(1); break;
                 case '-': update_speed(-1); break;
