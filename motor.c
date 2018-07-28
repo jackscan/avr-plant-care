@@ -79,7 +79,7 @@ static struct
     volatile bool calibrated;
 } s_motor_a;
 
-static uint16_t get_time(void) {
+static uint16_t get_motor_time(void) {
     uint16_t ovf = s_motor_a.timer_ovf;
     uint16_t tcnt = TCNT1;
     // overflow pending?
@@ -109,7 +109,7 @@ static void update_count(int8_t dir) {
 }
 
 ISR (MA_SENS_PCINT_VECT) {
-    uint16_t t = get_time();
+    uint16_t t = get_motor_time();
 
     const uint8_t mask = MA_SENSA_BIT | MA_SENSB_BIT;
     uint8_t sens = MA_SENS_PIN & mask;
@@ -180,7 +180,7 @@ void motor_update_feed(void) {
     LOCKI();
     uint16_t dt = s_motor_a.time[1] - s_motor_a.time[0];
     int16_t dc = s_motor_a.count[1] - s_motor_a.count[0];
-    uint16_t t = get_time();
+    uint16_t t = get_motor_time();
     // last count time
     uint16_t lastt = s_motor_a.time[2];
     // current position
@@ -461,7 +461,7 @@ void motor_unset_target(void) {
 uint16_t motor_get_time(void)
 {
     LOCKI();
-    uint16_t t = get_time();
+    uint16_t t = get_motor_time();
     UNLOCKI();
     return t;
 }
