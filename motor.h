@@ -15,7 +15,7 @@ void motor_move(uint8_t minfeed, uint16_t maxspd, int16_t angle,
                 int8_t revolutions);
 void motor_update_feed(void);
 int8_t motor_get_remaining_revolutions(void);
-uint16_t motor_get_speed(void);
+uint16_t motor_get_spd(void);
 uint16_t motor_get_skip(void);
 int16_t motor_get_pos(void);
 int16_t motor_get_adjust(void);

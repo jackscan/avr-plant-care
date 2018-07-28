@@ -432,21 +432,7 @@ int8_t motor_get_remaining_revolutions(void) {
     return s_motor_a.revolutions;
 }
 
-uint16_t motor_get_speed(void) {
-    LOCKI();
-    int16_t c0 = s_motor_a.count[0];
-    int16_t c1 = s_motor_a.count[1];
-    uint16_t t0 = s_motor_a.time[0];
-    uint16_t t1 = s_motor_a.time[1];
-    UNLOCKI();
-
-    uint16_t dt = t1 - t0;
-    if (dt == 0) dt = 1;
-
-    return (c1 - c0) / dt;
-}
-
-static uint16_t motor_get_spd(void) {
+uint16_t motor_get_spd(void) {
     LOCKI();
     uint16_t dt = s_motor_a.time[1] - s_motor_a.time[0];
     int16_t dc = s_motor_a.count[1] - s_motor_a.count[0];
