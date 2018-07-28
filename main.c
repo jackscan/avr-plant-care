@@ -283,6 +283,7 @@ int main(void) {
                 case 's': printf("writing calibration data\n"); hx711_write_calib(); break;
                 case 'q': input_mode = QTIME_INPUT; printf("enter seconds\n> "); break;
                 case '2': input_mode = WTIME_INPUT; printf("enter startup and watering time\n>"); break;
+                case 'a': printf("water account: %ums\n", water_limit(0xFF) * 250); break;
                 case 'w': measure_weight_2(); break;
                 case '+': update_speed(1); break;
                 case '-': update_speed(-1); break;
