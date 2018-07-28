@@ -17,7 +17,7 @@ void motor_update_feed(void);
 int8_t motor_get_remaining_revolutions(void);
 uint16_t motor_get_spd(void);
 uint16_t motor_get_skip(void);
-int16_t motor_get_pos(void);
+void motor_get_pos_and_adjust(int16_t *pos, int16_t *adjust);
 int16_t motor_get_adjust(void);
 uint16_t motor_get_time(void);
 /// Returns target speed for rotating count steps in qsec quaters of second.

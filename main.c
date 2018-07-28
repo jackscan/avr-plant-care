@@ -58,6 +58,16 @@ static uint8_t early_init(void) {
     return mcusr;
 }
 
+static void dump_motor_status(void) {
+    int16_t pos, adj;
+    motor_get_pos_and_adjust(&pos, &adj);
+    printf("pos: %d (%d), skip: %d, spd: %u, feed: %u, time: %u, rev: "
+           "%d, cal: %i\n",
+           pos, adj, motor_get_skip(), motor_get_spd(), motor_get_feed(),
+           motor_get_time(), motor_get_remaining_revolutions(),
+           motor_pos_is_calibrated());
+}
+
 static void measure_weight_2(void) {
     printf("w:\n");
     for (uint8_t i = 0; i < 10; ++i) {
@@ -166,6 +176,7 @@ int main(void) {
                 case 'p': motor_enable_pos_sensor(); break;
                 case '.': motor_start(); printf("motor started\n"); break;
                 case ',': motor_stop(); printf("motor stopped\n"); break;
+                case 'c': dump_motor_status(); break;
                 case '?': printf("PRR: %#x, GTCCR: %#x, TCCR1A: %#x TCCR1B: %#x, TCNT1: %u, TCCR2A: %#x TCCR2B: %#x, TCNT2: %u\n", PRR, GTCCR, TCCR1A, TCCR1B, TCNT1, TCCR2A, TCCR2B, TCNT2); break;
                 }
             }

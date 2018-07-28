@@ -175,6 +175,10 @@ ISR (TIMER1_OVF_vect) {
     OCR1A = s_motor_a.feed;
 }
 
+static int16_t motor_get_pos(void) {
+    return s_motor_a.count[2];
+}
+
 void motor_update_feed(void) {
 
     // wait for feed update
@@ -409,8 +413,11 @@ void motor_move(uint8_t minfeed, uint16_t maxspd, int16_t angle,
     motor_set_target(angle);
 }
 
-int16_t motor_get_pos(void) {
-    return s_motor_a.count[2];
+void motor_get_pos_and_adjust(int16_t *pos, int16_t *adj) {
+    LOCKI();
+    *adj = s_motor_a.adjust;
+    *pos = motor_get_pos();
+    UNLOCKI();
 }
 
 int16_t motor_get_adjust(void) {
