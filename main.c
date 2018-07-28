@@ -8,6 +8,7 @@
 #include "timer.h"
 #include "motor.h"
 #include "hx711.h"
+#include "water.h"
 
 #include <avr/io.h>
 #include <avr/eeprom.h>
@@ -112,7 +113,7 @@ int main(void) {
     debug_init_trace();
 
     timer_start();
-
+    water_init();
     motor_init();
     hx711_init();
 
