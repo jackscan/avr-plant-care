@@ -51,6 +51,7 @@
 #define SPD_SCALE 4096UL
 #define SPEED(DC, DT) (uint16_t)((uint32_t)(DC) * SPD_SCALE / (DT))
 #define DISTANCE(SPD, DT) (int16_t)(((uint32_t)(SPD) * (uint32_t)(DT)) / SPD_SCALE)
+#define TRAVEL_TIME(DC, SPD) ((uint32_t)(DC) * SPD_SCALE / (uint32_t)(SPD))
 
 #define LOCKI() uint8_t sreg = SREG; cli()
 #define RELOCKI() sreg = SREG; cli()
@@ -256,6 +257,15 @@ void motor_update_feed(void) {
     s_motor_a.feed_updated = false;
     UNLOCKI();
 
+}
+
+uint8_t motor_get_time_per_revolution(uint16_t spd)
+{
+    uint32_t dt = TRAVEL_TIME(CPR, spd);
+    // quater of a second
+    uint32_t qs = F_CPU / (TIMER_CLOCK_DIV * 4);
+    uint32_t s = (dt + qs/2) / qs;
+    return s < 255 ? (uint8_t)s : 255;
 }
 
 void motor_dump_pos_sens(void) {
