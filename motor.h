@@ -18,6 +18,7 @@ int8_t motor_get_remaining_revolutions(void);
 uint16_t motor_get_speed(void);
 uint16_t motor_get_skip(void);
 int16_t motor_get_pos(void);
+int16_t motor_get_adjust(void);
 uint16_t motor_get_time(void);
 uint8_t motor_get_feed(void);
 bool motor_pos_is_calibrated(void);

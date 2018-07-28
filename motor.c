@@ -79,6 +79,7 @@ static struct
     // speed counter got updated
     volatile bool update;
     volatile bool calibrated;
+    volatile int16_t adjust;
 } s_motor_a;
 
 static uint16_t get_motor_time(void) {
@@ -295,6 +296,8 @@ ISR (MA_POS_PCINT_VECT) {
         for (uint8_t i = 0; i < 3; ++i)
             s_motor_a.count[i] += delta;
 
+        s_motor_a.adjust += delta;
+
         // plausibility check
         if (POS_CAL_WIDTH - POS_CAL_WIDTH_TOL <= d &&
             d <= POS_CAL_WIDTH + POS_CAL_WIDTH_TOL) {
@@ -394,6 +397,13 @@ void motor_move(uint8_t minfeed, uint16_t maxspd, int16_t angle,
 
 int16_t motor_get_pos(void) {
     return s_motor_a.count[2];
+}
+
+int16_t motor_get_adjust(void) {
+    LOCKI();
+    int16_t adj = s_motor_a.adjust;
+    UNLOCKI();
+    return adj;
 }
 
 bool motor_pos_is_calibrated(void) {
