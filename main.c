@@ -21,6 +21,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#define MOTOR_MIN_FEED 30
+#define MOTOR_MAX_SPEED 300
+
 static uint8_t early_init(void) {
     // save reset reason
     uint8_t mcusr = MCUSR;
@@ -66,6 +69,91 @@ static void dump_motor_status(void) {
            pos, adj, motor_get_skip(), motor_get_spd(), motor_get_feed(),
            motor_get_time(), motor_get_remaining_revolutions(),
            motor_pos_is_calibrated());
+}
+
+uint8_t water(uint8_t startuptime, uint8_t watertime) {
+    // quaters of second the watering pump is enabled
+    uint8_t qt = water_limit(startuptime + watertime);
+
+    printf("watering %ums\n", (uint16_t)qt * 250u);
+
+    uint8_t wt = qt > startuptime ? qt - startuptime : 1;
+    uint16_t tspd = motor_calculate_speed(CPR, wt);
+    printf("target spd: %u\n", tspd);
+
+    // TODO: use last set target position instead of current
+    int16_t mpos, madj;
+    motor_get_pos_and_adjust(&mpos, &madj);
+
+    uint32_t tlast = get_time();
+
+    uint32_t interval = TIMER_MS(250);
+
+    // start motor
+    // assumptions: <startuptime> + <time for motor to reach its speed> is less
+    // than 2x watertime
+    motor_move(MOTOR_MIN_FEED, tspd, mpos, 2);
+
+    wdt_enable(WDTO_500MS);
+    motor_start();
+
+    // wait for motor to reach about 80% of target speed
+    uint16_t spdthreshold = tspd * 4 / 5;
+    // wait at most 5s
+    for (uint8_t i = 0; i < 4 * 5;) {
+        if (motor_get_spd() > spdthreshold)
+            break;
+        uint32_t t = get_time();
+        if (t - tlast > interval) {
+            ++i;
+            tlast += interval;
+            wdt_reset();
+        }
+        motor_update_feed();
+    }
+
+    wdt_reset();
+    water_start();
+
+    for (uint8_t i = 0; i < qt;) {
+        uint32_t t = get_time();
+        if (t - tlast > interval) {
+            ++i;
+            tlast += interval;
+            wdt_reset();
+        }
+        motor_update_feed();
+    }
+    uint8_t dt = water_stop();
+
+    // motor is hopefully calibrated now, update target position
+    mpos += motor_get_adjust() - madj;
+    motor_move(MOTOR_MIN_FEED, MOTOR_MAX_SPEED, mpos, 0);
+    wdt_reset();
+
+    // calculate some max time for motor to reach its target
+    const uint16_t max_wait_time =
+        2 * (uint16_t)motor_get_time_per_revolution(MOTOR_MAX_SPEED);
+
+
+    // wait for motor to reach its target position
+    for (uint16_t i = 0; i < max_wait_time;) {
+        if (motor_is_stopped()) break;
+        uint32_t t = get_time();
+        if (t - tlast > interval) {
+            ++i;
+            tlast += interval;
+            wdt_reset();
+        }
+        motor_update_feed();
+    }
+
+    motor_stop();
+    wdt_disable();
+
+    printf("watered %lums\n", (uint32_t)dt * 250);
+
+    return dt;
 }
 
 static void measure_weight_2(void) {
@@ -136,6 +224,7 @@ int main(void) {
         KEY_INPUT = 0,
         CALIBRATION_INPUT,
         QTIME_INPUT,
+        WTIME_INPUT,
     } input_mode = KEY_INPUT;
 
     for (;;) {
@@ -172,6 +261,15 @@ int main(void) {
                         }
                         break;
                     }
+                    case WTIME_INPUT: {
+                        uint16_t s, t;
+                        if (sscanf(linebuf, "%u %u", &s, &t) == 2) {
+                            if (s > 255) s = 255;
+                            if (t > 255) t = 255;
+                            water((uint8_t)s, (uint8_t)t);
+                        }
+                        break;
+                    }
                     default:
                         break;
                     }
@@ -184,6 +282,7 @@ int main(void) {
                 case '1': input_mode = CALIBRATION_INPUT; printf("enter offset and scale\n> "); break;
                 case 's': printf("writing calibration data\n"); hx711_write_calib(); break;
                 case 'q': input_mode = QTIME_INPUT; printf("enter seconds\n> "); break;
+                case '2': input_mode = WTIME_INPUT; printf("enter startup and watering time\n>"); break;
                 case 'w': measure_weight_2(); break;
                 case '+': update_speed(1); break;
                 case '-': update_speed(-1); break;
