@@ -256,7 +256,11 @@ void motor_update_feed(void) {
     s_motor_a.feed = ocr1;
     s_motor_a.feed_updated = false;
     UNLOCKI();
+}
 
+uint16_t motor_calculate_speed(uint16_t count, uint8_t qsecs) {
+    uint32_t dt = qsecs * F_CPU / (4 * TIMER_CLOCK_DIV);
+    return SPEED(count, dt);
 }
 
 uint8_t motor_get_time_per_revolution(uint16_t spd)
