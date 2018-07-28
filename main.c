@@ -132,7 +132,10 @@ int main(void) {
 
     char linebuf[64];
     uint8_t linelen = 0;
-    bool calib = false;
+    enum  {
+        KEY_INPUT = 0,
+        CALIBRATION_INPUT,
+    } input_mode = KEY_INPUT;
 
     for (;;) {
         // motor_debug();
@@ -142,27 +145,35 @@ int main(void) {
         if (debug_char_pending()) {
             CHECKPOINT;
             char c = debug_getchar();
-            if (calib) {
+            if (input_mode) {
                 if (c != '\n' && c != '\r') {
                     linebuf[linelen++] = c;
                     printf("%c", c);
                 } else {
                     printf("\n");
                     linebuf[linelen] = '\0';
-                    uint32_t offset, scale;
-                    if (sscanf(linebuf, "%lu %lu", &offset, &scale) == 2) {
-                        hx711_calib(offset, scale);
-                    } else {
-                        printf("failed to read offset and scale: '%s'\n",
-                               linebuf);
+
+                    switch (input_mode) {
+                    case CALIBRATION_INPUT: {
+                        uint32_t offset, scale;
+                        if (sscanf(linebuf, "%lu %lu", &offset, &scale) == 2) {
+                            hx711_calib(offset, scale);
+                        } else {
+                            printf("failed to read offset and scale: '%s'\n",
+                                   linebuf);
+                        }
+                        break;
+                    }
+                    default:
+                        break;
                     }
                     linelen = 0;
-                    calib = false;
+                    input_mode = KEY_INPUT;
                 }
             } else {
                 switch (c) {
                 case 't': measure_timer(); break;
-                case '1': calib = true; printf("enter offset and scale\n> "); break;
+                case '1': input_mode = CALIBRATION_INPUT; printf("enter offset and scale\n> "); break;
                 case 's': printf("writing calibration data\n"); hx711_write_calib(); break;
                 case 'w': measure_weight_2(); break;
                 case '+': update_speed(1); break;
