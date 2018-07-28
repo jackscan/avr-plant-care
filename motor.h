@@ -26,6 +26,7 @@ uint16_t motor_calculate_speed(uint16_t count, uint8_t qsecs);
 uint8_t motor_get_time_per_revolution(uint16_t spd);
 uint8_t motor_get_feed(void);
 bool motor_pos_is_calibrated(void);
+bool motor_is_stopped(void);
 void motor_enable_pos_sensor(void);
 void motor_disable_pos_sensor(void);
 void motor_dump_calc(void);

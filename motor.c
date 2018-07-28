@@ -508,3 +508,7 @@ void motor_stop(void) {
     if (s_motor_a.skip > 0)
         motor_unset_calibration();
 }
+
+bool motor_is_stopped(void) {
+    return (TCCR1B & CLOCK_SELECT) == 0;
+}
