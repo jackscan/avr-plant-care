@@ -269,6 +269,13 @@ int main(void) {
             case CMD_GET_WEIGHT:
                 measure_weight();
                 break;
+            case CMD_ROTATE: {
+                    int16_t mpos = twi_get_target_angle();
+                    printf("rotate to %d\n", mpos);
+                    motor_move(MOTOR_MIN_FEED, MOTOR_MAX_SPEED, mpos, 0);
+                    motor_start();
+                }
+                break;
             case CMD_STOP:
                 motor_stop();
                 twi_unset_stop_flag();
