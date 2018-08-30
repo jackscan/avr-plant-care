@@ -291,6 +291,7 @@ static void handle_cmd(void) {
             } else {
                 reset_cmd();
             }
+            break;
         case CMD_STOP:
             s_twi.data.stop = true;
             break;
