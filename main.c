@@ -76,16 +76,14 @@ uint8_t water(uint8_t startuptime, uint8_t watertime) {
     // quaters of second the watering pump is enabled
     uint8_t qt = water_limit(startuptime + watertime);
 
-    printf("watering %ums\n", (uint16_t)qt * 250u);
+    printf("watering %ums (%u, %u)\n", (uint16_t)qt * 250u,
+           startuptime, watertime);
 
     uint8_t wt = qt > startuptime ? qt - startuptime : 1;
     uint16_t tspd = motor_calculate_speed(CPR, wt);
     printf("target spd: %u\n", tspd);
 
-    // TODO: use last set target position instead of current
-    int16_t mpos, madj;
-    motor_get_pos_and_adjust(&mpos, &madj);
-
+    int16_t mpos = twi_get_target_angle();
     uint32_t tlast = get_time();
 
     uint32_t interval = TIMER_MS(250);
@@ -101,7 +99,7 @@ uint8_t water(uint8_t startuptime, uint8_t watertime) {
     // wait for motor to reach about 80% of target speed
     uint16_t spdthreshold = tspd * 4 / 5;
     // wait at most 5s
-    for (uint8_t i = 0; i < 4 * 5;) {
+    for (uint8_t i = 0; !twi_get_stop_flag() && i < 4 * 5;) {
         if (motor_get_spd() > spdthreshold)
             break;
         uint32_t t = get_time();
@@ -116,7 +114,7 @@ uint8_t water(uint8_t startuptime, uint8_t watertime) {
     wdt_reset();
     water_start();
 
-    for (uint8_t i = 0; i < qt;) {
+    for (uint8_t i = 0; !twi_get_stop_flag() && i < qt;) {
         uint32_t t = get_time();
         if (t - tlast > interval) {
             ++i;
@@ -127,8 +125,7 @@ uint8_t water(uint8_t startuptime, uint8_t watertime) {
     }
     uint8_t dt = water_stop();
 
-    // motor is hopefully calibrated now, update target position
-    mpos += motor_get_adjust() - madj;
+    // update speed
     motor_move(MOTOR_MIN_FEED, MOTOR_MAX_SPEED, mpos, 0);
     wdt_reset();
 
@@ -138,7 +135,7 @@ uint8_t water(uint8_t startuptime, uint8_t watertime) {
 
 
     // wait for motor to reach its target position
-    for (uint16_t i = 0; i < max_wait_time;) {
+    for (uint16_t i = 0; !twi_get_stop_flag() && i < max_wait_time;) {
         if (motor_is_stopped()) break;
         uint32_t t = get_time();
         if (t - tlast > interval) {
@@ -268,6 +265,10 @@ int main(void) {
             switch (cmd) {
             case CMD_GET_WEIGHT:
                 measure_weight();
+                break;
+            case CMD_WATERING:
+                twi_set_last_watering(
+                    water(twi_get_watering_startup(), twi_get_watering()));
                 break;
             case CMD_ROTATE: {
                     int16_t mpos = twi_get_target_angle();
