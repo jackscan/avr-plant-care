@@ -101,5 +101,9 @@ uint16_t hx711_read(void) {
         result >>= 1;
     }
 
+    if (result > 0xFFFF) {
+        result = 0xFFFF;
+    }
+
     return (uint16_t)result;
 }
