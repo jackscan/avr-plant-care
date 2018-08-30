@@ -9,6 +9,7 @@
 #include "motor.h"
 #include "hx711.h"
 #include "water.h"
+#include "twi-slave.h"
 
 #include <avr/io.h>
 #include <avr/eeprom.h>
@@ -214,6 +215,7 @@ int main(void) {
     water_init();
     motor_init();
     hx711_init();
+    twi_slave_init(0x10);
 
     sei();
     printf("\nboot: %#x\n", mcusr);
@@ -232,6 +234,22 @@ int main(void) {
         motor_dump_pos_sens();
         motor_update_feed();
         // debug_dump_motor();
+
+        twi_dump_trace();
+        if (twi_cmd_pending()) {
+            CHECKPOINT;
+            uint8_t cmd = twi_next_cmd();
+            printf("command: %#x\n", cmd);
+            switch (cmd) {
+            case CMD_STOP:
+                motor_stop();
+                twi_unset_stop_flag();
+                printf("stopped\n");
+                break;
+            }
+        }
+
+
         if (debug_char_pending()) {
             CHECKPOINT;
             char c = debug_getchar();
