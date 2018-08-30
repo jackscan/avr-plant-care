@@ -157,6 +157,31 @@ uint8_t water(uint8_t startuptime, uint8_t watertime) {
     return dt;
 }
 
+static void measure_weight(void) {
+    uint32_t t0 = get_time();
+
+    while (true) {
+        uint16_t w = hx711_read();
+        if (twi_get_cmd() != CMD_GET_WEIGHT ||
+            get_time() - t0 >= TIMER_MS(4000)) {
+            break;
+        }
+        twi_add_weight(w);
+    }
+
+    uint32_t t1 = get_time();
+    uint32_t w = twi_get_weight();
+
+    hx711_powerdown();
+
+    printf("weight measuring: %lu\n", t1 - t0);
+
+    uint32_t n = (w >> 16);
+    uint32_t d = (w & 0xFFFF);
+    printf("weight: %u / %u = %u\n",
+           (uint16_t)n, (uint16_t)d, (uint16_t)((n + d / 2) / d));
+}
+
 static void measure_weight_2(void) {
     printf("w:\n");
     for (uint8_t i = 0; i < 10; ++i) {
@@ -241,6 +266,9 @@ int main(void) {
             uint8_t cmd = twi_next_cmd();
             printf("command: %#x\n", cmd);
             switch (cmd) {
+            case CMD_GET_WEIGHT:
+                measure_weight();
+                break;
             case CMD_STOP:
                 motor_stop();
                 twi_unset_stop_flag();
