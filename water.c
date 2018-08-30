@@ -53,7 +53,6 @@ void water_start(void) {
 uint8_t water_stop(void) {
     uint32_t t1 = get_time();
     WATERING_PORT &= ~WATERING_BIT;
-    wdt_disable();
 
     uint32_t f = (F_CPU / 4UL);
     uint32_t t0 = s_start_time;
