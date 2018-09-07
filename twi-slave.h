@@ -3,8 +3,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define CMD_SHIFT 1
-
 #define CMD_GET_LAST_WATERING   0x10
 #define CMD_GET_WATER_LIMIT     0x11
 #define CMD_GET_WEIGHT          0x12
