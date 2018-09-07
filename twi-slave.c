@@ -262,7 +262,6 @@ static void fill_buffer(void) {
         break;
     }
 
-    reset_cmd();
 }
 
 static void handle_cmd(void) {
