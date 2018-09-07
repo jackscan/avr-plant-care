@@ -170,7 +170,7 @@ static void measure_weight(void) {
 
     hx711_powerdown();
 
-    printf("weight measuring: %lu\n", t1 - t0);
+    printf("weight measuring time: %lu\n", t1 - t0);
 
     uint32_t n = (w >> 16);
     uint32_t d = (w & 0xFFFF);
