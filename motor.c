@@ -449,7 +449,7 @@ uint16_t motor_get_spd(void) {
 }
 
 void motor_set_target(int16_t angle) {
-    uint16_t spd = motor_get_spd();
+    uint16_t spd = s_motor_a.max_spd;
     // stopping distance
     int16_t d = 2 * DISTANCE(spd, FORESIGHT);
     while (angle < 0) angle += CPR;
