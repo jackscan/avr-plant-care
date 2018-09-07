@@ -72,7 +72,7 @@ static void dump_motor_status(void) {
            motor_pos_is_calibrated());
 }
 
-uint8_t water(uint8_t startuptime, uint8_t watertime) {
+static void water(uint8_t startuptime, uint8_t watertime) {
     // quaters of second the watering pump is enabled
     uint8_t qt = water_limit(startuptime + watertime);
 
