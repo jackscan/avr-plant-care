@@ -98,8 +98,8 @@ static void water(uint8_t startuptime, uint8_t watertime) {
 
     // wait for motor to reach about 80% of target speed
     uint16_t spdthreshold = tspd * 4 / 5;
-    // wait at most 5s
-    for (uint8_t i = 0; !twi_get_stop_flag() && i < 4 * 5;) {
+    // wait at most 2s
+    for (uint8_t i = 0; !twi_get_stop_flag() && i < 2 * 4;) {
         if (motor_get_spd() > spdthreshold)
             break;
         uint32_t t = get_time();
