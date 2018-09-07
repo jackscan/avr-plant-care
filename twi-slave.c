@@ -247,8 +247,7 @@ static void fill_buffer(void) {
     case CMD_GET_WATER_LIMIT:
         s_twi.buf[0] = water_limit(MAX_WATER_TIME);
         s_twi.buflen = 1;
-    case CMD_ROTATE:
-        break;
+    case CMD_ROTATE: // fallthrough
     case CMD_GET_MOTOR_STATUS: {
         s_twi.buf[0] = motor_get_feed();
         uint16_t skip = motor_get_skip();
