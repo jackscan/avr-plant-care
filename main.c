@@ -125,6 +125,7 @@ static void water(uint8_t startuptime, uint8_t watertime) {
     }
     uint8_t dt = water_stop();
 
+    twi_set_last_watering(dt);
     // update speed
     motor_move(MOTOR_MIN_FEED, MOTOR_MAX_SPEED, mpos, 0);
     wdt_reset();
@@ -150,8 +151,6 @@ static void water(uint8_t startuptime, uint8_t watertime) {
     wdt_disable();
 
     printf("watered %lums\n", (uint32_t)dt * 250);
-
-    return dt;
 }
 
 static void measure_weight(void) {
@@ -267,8 +266,7 @@ int main(void) {
                 measure_weight();
                 break;
             case CMD_WATERING:
-                twi_set_last_watering(
-                    water(twi_get_watering_startup(), twi_get_watering()));
+                water(twi_get_watering_startup(), twi_get_watering());
                 break;
             case CMD_ROTATE: {
                     int16_t mpos = twi_get_target_angle();
