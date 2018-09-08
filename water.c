@@ -42,17 +42,19 @@ static uint32_t s_start_time;
 
 void water_init(void) {
     WATERING_PORT &= ~WATERING_BIT;
-    WATERING_DDR &= ~WATERING_BIT;
+    WATERING_DDR |= WATERING_BIT;
 }
 
 void water_start(void) {
     s_start_time = get_time();
+    WATERING_DDR &= ~WATERING_BIT;
     WATERING_PORT |= WATERING_BIT;
 }
 
 uint8_t water_stop(void) {
     uint32_t t1 = get_time();
     WATERING_PORT &= ~WATERING_BIT;
+    WATERING_DDR |= WATERING_BIT;
 
     uint32_t f = (F_CPU / 4UL);
     uint32_t t0 = s_start_time;
