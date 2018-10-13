@@ -46,9 +46,10 @@ static uint8_t early_init(void) {
     ACSR |= (1 << ACD);
 
     // set pins to output
-    DDRB = (1 << DDB0) | (1 << DDB1) | (1 << DDB2) | (1 << DDB3) | (1 << DDB4) | (1 << DDB5);
-    DDRC = (1 << DDC0) | (1 << DDC1) | (1 << DDC2) | (1 << DDC3);
-    DDRD = (1 << DDD2) | (1 << DDD3) | (1 << DDD6) | (1 << DDD7);
+    DDRB = ~0;
+    // except SDA, SCL, Reset
+    DDRC = ~((1 << DDC4) | (1 << DDC5) | (1 << DDC6));
+    DDRD = ~0;
     // drive pins low
     PORTB = 0;
     PORTC = 0;

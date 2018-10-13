@@ -3,9 +3,9 @@
 #include <avr/interrupt.h>
 #include <avr/wdt.h>
 
-#define WATERING_DDR DDRB
-#define WATERING_PORT PORTB
-#define WATERING_BIT (1 << PB4)
+#define WATERING_DDR DDRD
+#define WATERING_PORT PORTD
+#define WATERING_BIT (1 << PD4)
 
 static __attribute__ ((section (".noinit"))) struct {
     uint32_t balance;
