@@ -4,6 +4,8 @@
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
 
+#include <stdbool.h>
+
 static __attribute__ ((section (".noinit"))) uint32_t s_count;
 
 void timer_start(void) {
@@ -20,6 +22,16 @@ ISR (TIMER2_OVF_vect) {
 }
 
 uint32_t get_time(void) {
+    uint8_t sreg = SREG;
+    cli();
+    uint32_t count = s_count;
     uint8_t c = TCNT2;
-    return (s_count << 8) | (uint32_t)c;
+    bool overflow = (TIFR2 & (1 << TOV2)) != 0;
+    SREG = sreg;
+
+    // overflow pending?
+    if (overflow && c < 128)
+        ++count;
+
+    return count << 8 | (uint32_t)c;
 }
