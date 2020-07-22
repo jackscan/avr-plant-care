@@ -16,6 +16,7 @@
 
 void twi_slave_init(uint8_t addr);
 bool twi_busy(void);
+// Signal whether a command needs to be processed by main loop.
 bool twi_cmd_pending(void);
 uint8_t twi_get_cmd(void);
 uint8_t twi_next_cmd(void);
