@@ -7,11 +7,7 @@
 #define WATERING_PORT PORTD
 #define WATERING_BIT (1 << PD4)
 
-static __attribute__ ((section (".noinit"))) struct {
-    uint32_t balance;
-    uint32_t last;
-    uint32_t fract;
-} s_account;
+account_t s_account = {};
 
 uint8_t water_limit(uint8_t t) {
     uint32_t curr = get_time();
