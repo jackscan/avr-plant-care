@@ -245,7 +245,7 @@ static void fill_buffer(void) {
         s_twi.buflen = 1;
         break;
     case CMD_GET_WATER_LIMIT:
-        s_twi.buf[0] = water_limit(MAX_WATER_TIME);
+        s_twi.buf[0] = water_get_limit();
         s_twi.buflen = 1;
         break;
     case CMD_ROTATE: // fallthrough

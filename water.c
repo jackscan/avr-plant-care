@@ -15,11 +15,11 @@ uint8_t water_limit(uint8_t t) {
     uint8_t sreg = SREG;
     cli();
     uint32_t dt = (curr - s_account.last + s_account.fract);
-    uint32_t da = dt / WATER_TIME_REFILL_INTERVAL;
+    uint32_t da = dt / s_account.refill_interval;
     uint32_t na = da + s_account.balance;
 
     s_account.balance = na < MAX_WATER_TIME ? na : MAX_WATER_TIME;
-    s_account.fract = dt - da * WATER_TIME_REFILL_INTERVAL;
+    s_account.fract = dt - da * s_account.refill_interval;
     s_account.last = curr;
     SREG = sreg;
 
@@ -29,9 +29,45 @@ uint8_t water_limit(uint8_t t) {
     return t;
 }
 
+uint8_t water_get_limit(void) {
+    uint32_t curr = get_time();
+
+    uint8_t sreg = SREG;
+    cli();
+    uint32_t dt = (curr - s_account.last + s_account.fract);
+    uint32_t da = dt / s_account.refill_interval;
+    uint32_t na = da + s_account.balance;
+    SREG = sreg;
+
+    uint8_t limit = na < MAX_WATER_TIME ? na : MAX_WATER_TIME;
+    return limit;
+}
+
+void water_set_refill(uint8_t m) {
+    uint32_t t = TIMER_MIN(m);
+    if (t < MIN_WATER_TIME_REFILL_INTERVAL)
+        t = MIN_WATER_TIME_REFILL_INTERVAL;
+    uint8_t sreg = SREG;
+    cli();
+    s_account.refill_interval = t;
+    SREG = sreg;
+}
+
+uint8_t water_get_refill(void) {
+    uint8_t sreg = SREG;
+    cli();
+    uint32_t t = s_account.refill_interval;
+    SREG = sreg;
+    uint32_t m = t / (F_CPU * 60UL / 1024);
+    return (uint8_t)m;
+}
+
 static void update_water_account(uint8_t t) {
+    uint8_t sreg = SREG;
+    cli();
     s_account.balance =
         (t < s_account.balance) ? s_account.balance - t : 0;
+    SREG = sreg;
 }
 
 static uint32_t s_start_time;
@@ -39,6 +75,7 @@ static uint32_t s_start_time;
 void water_init(void) {
     WATERING_PORT &= ~WATERING_BIT;
     WATERING_DDR |= WATERING_BIT;
+    s_account.refill_interval = MIN_WATER_TIME_REFILL_INTERVAL;
 }
 
 void water_start(void) {
