@@ -249,6 +249,7 @@ int main(void) {
         CALIBRATION_INPUT,
         QTIME_INPUT,
         WTIME_INPUT,
+        REFILL_INPUT,
     } input_mode = KEY_INPUT;
 
     for (;;) {
@@ -323,6 +324,16 @@ int main(void) {
                         }
                         break;
                     }
+                    case REFILL_INPUT: {
+                        uint16_t t;
+                        if (sscanf(linebuf, "%u", &t) == 1) {
+                            uint8_t r = (uint8_t)t;
+                            printf("setting refill interval: %u (%lu)\n", r, TIMER_MIN(r));
+                            water_set_refill(r);
+                        }
+                        printf("refill interval: %um (%lu)\n", water_get_refill(), s_account.refill_interval);
+                        break;
+                    }
                     default:
                         break;
                     }
@@ -338,6 +349,7 @@ int main(void) {
                 case '2': input_mode = WTIME_INPUT; printf("enter startup and watering time\n>"); break;
                 case 'a': printf("water account: %ums\n", water_limit(0xFF) * 250); break;
                 case 'w': measure_weight_2(); break;
+                case 'r': input_mode = REFILL_INPUT; break;
                 case '+': update_speed(1); break;
                 case '-': update_speed(-1); break;
                 case 'l': update_move(100); break;
