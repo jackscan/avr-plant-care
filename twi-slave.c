@@ -259,6 +259,10 @@ static void fill_buffer(void) {
         s_twi.buflen = 2;
         break;
     }
+    case CMD_GET_WATER_REFILL:
+        s_twi.buf[0] = water_get_refill();
+        s_twi.buflen = 1;
+        break;
     case CMD_ECHO:
         break;
     }
@@ -293,6 +297,9 @@ static void handle_cmd(void) {
             break;
         case CMD_STOP:
             s_twi.data.stop = true;
+            break;
+        case CMD_SET_WATER_REFILL:
+            water_set_refill(s_twi.buf[1]);
             break;
         case CMD_ECHO:
             break;

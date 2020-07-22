@@ -9,6 +9,8 @@
 #define CMD_ROTATE              0x13
 #define CMD_STOP                0x14
 #define CMD_GET_MOTOR_STATUS    0x15
+#define CMD_SET_WATER_REFILL    0x16
+#define CMD_GET_WATER_REFILL    0x17
 #define CMD_WATERING            0x1A
 #define CMD_ECHO                0x29
 
