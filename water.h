@@ -4,7 +4,7 @@
 
 #include <stdint.h>
 
-#define MAX_WATER_TIME  80 // 20s
+#define MAX_WATER_TIME  120 // 30s
 #define MIN_WATER_TIME_REFILL_INTERVAL TIMER_MIN(15)
 
 typedef struct {
